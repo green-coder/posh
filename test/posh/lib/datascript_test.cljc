@@ -3,6 +3,16 @@
             [datascript.core :as dt]
             [posh.clj.datascript :as d]))
 
+(defn- analyze [schema data pattern id]
+  (let [conn (dt/create-conn schema)]
+    (d/posh! conn)
+    (d/transact! conn data)
+    (posh.lib.pull-analyze/pull-analyze
+      d/dcfg
+      [:datoms :patterns]
+      {:db @conn :schema schema :db-id :posh}
+      pattern id)))
+
 (deftest test-simple-query
   (let [conn (dt/create-conn {:a {:db/unique :db.unique/identity}})
         _ (d/posh! conn)
@@ -118,7 +128,88 @@
              {:a "foo" :b 42}) "entity-reaction contains correct value after unrelated tx")
       (d/transact! conn [(assoc @entity-reaction :a "bar" :b 43)])
       (is (= (select-keys @entity-reaction [:a :b])
-             {:a "bar" :b 43}) "entity-reaction derefs to later transacted value"))))
+             {:a "bar" :b 43}) "entity-reaction derefs to later transacted value")))
+
+  (testing "Pull reactivity using a component,"
+    (let [schema {:person/name {:db/valueType :db.type/ref
+                                :db/isComponent true}}]
+      (testing "without a star in the query"
+        (let [conn (dt/create-conn schema)
+              _ (d/posh! conn)
+              {{person-eid -1
+                name-eid   -2} :tempids} (d/transact! conn [{:db/id -1
+                                                             :person/name {:db/id -2
+                                                                           :person.name/given-name  "Anna"
+                                                                           :person.name/family-name "Koivu"}}])
+              entity-reaction (d/pull conn [:person/name] person-eid)]
+          (is (= {:db/id person-eid
+                  :person/name {:db/id name-eid
+                                :person.name/given-name "Anna"
+                                :person.name/family-name "Koivu"}}
+                 @entity-reaction))
+
+          (d/transact! conn [[:db/add name-eid :person.name/given-name "Alice"]])
+
+          (is (= {:db/id person-eid
+                  :person/name {:db/id name-eid
+                                :person.name/given-name "Alice"
+                                :person.name/family-name "Koivu"}}
+                 @entity-reaction))))
+
+      (testing "with a star in the query"
+        (let [conn (dt/create-conn schema)
+              _ (d/posh! conn)
+              {{person-eid -1
+                name-eid   -2} :tempids} (d/transact! conn [{:db/id -1
+                                                             :person/name {:db/id -2
+                                                                           :person.name/given-name  "Anna"
+                                                                           :person.name/family-name "Koivu"}}])
+              entity-reaction (d/pull conn ['*] person-eid)]
+          (is (= {:db/id person-eid
+                  :person/name {:db/id name-eid
+                                :person.name/given-name "Anna"
+                                :person.name/family-name "Koivu"}}
+                 @entity-reaction))
+
+          (d/transact! conn [[:db/add name-eid :person.name/given-name "Alice"]])
+
+          (is (= {:db/id person-eid
+                  :person/name {:db/id name-eid
+                                :person.name/given-name "Alice"
+                                :person.name/family-name "Koivu"}}
+                 @entity-reaction))))
+
+      (testing "analysis"
+        (let [data [{:person/name {:person.name/given-name "Anna"
+                                   :person.name/family-name "Koivu"}}]]
+          (are [pattern id expected]
+            (is (= expected
+                   (analyze schema data pattern id)))
+
+            ['*]
+            1
+            {:datoms {:posh [[1 :person/name 2]
+                             [2 :person.name/family-name "Koivu"]
+                             [2 :person.name/given-name "Anna"]]},
+             ;; a bit of redundancy, but it covers the patterns that need to be covered
+             :patterns {:posh [[#{1} :person/name '_] [#{1 2} '_ '_]]}}
+
+            [:person/name]
+            1
+            {:datoms {:posh [[1 :person/name 2]
+                             [2 :person.name/family-name "Koivu"]
+                             [2 :person.name/given-name "Anna"]]},
+             :patterns {:posh [[#{2} '_ '_] [#{1} :person/name '_]]}}
+
+            ['* :person/name]
+            1
+            {:datoms {:posh [[1 :person/name 2]
+                             [2 :person.name/family-name "Koivu"]
+                             [2 :person.name/given-name "Anna"]]},
+             ;; a bit of redundancy, but it covers the patterns that need to be covered
+             :patterns {:posh [[#{1} :person/name '_] [#{1 2} '_ '_]]}}
+
+            ,))))))
 
 (deftest test-pull-many
   (testing "pull-many returns entity reaction which updates on any entity's transact"
@@ -141,16 +232,6 @@
         (d/transact! conn updated-ents)
         (is (= updated-ents @entity-reaction)
             "Entities in reaction should updated after transact")))))
-
-(defn analyze [schema data pattern id]
-  (let [conn (dt/create-conn schema)]
-    (d/posh! conn)
-    (d/transact! conn data)
-    (posh.lib.pull-analyze/pull-analyze
-     d/dcfg
-     [:datoms :patterns]
-     {:db @conn :schema schema :db-id :posh}
-     pattern id)))
 
 (deftest pull-reverse-one-component-test
   (let [->schema (fn [isComponent]
@@ -191,7 +272,7 @@
         (let [with-isComponent (analyze (->schema true) data pattern id)
               without-isComponent (analyze (->schema false) data pattern id)]
 
-          (testing "both ways give same resuls"
+          (testing "both ways give same results"
             (is (= with-isComponent without-isComponent)))
 
           (testing "results are correct"

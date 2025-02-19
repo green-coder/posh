@@ -39,6 +39,9 @@
   (= (get (get schema attr) :db/valueType)
      :db.type/ref))
 
+(defn is-component? [schema attr]
+  (get (get schema attr) :db/isComponent))
+
 (defn cardinality-one? [schema attr]
   (when-let [e (get schema attr)]
     (not (= (:db/cardinality e) :db.cardinality/many))))
@@ -132,13 +135,28 @@
   (or (number? v) (= v '...)))
 
 (defn tx-pattern-for-pull [schema pull-pattern affected-pull refs-only?]
-  (let [entity-keys (remove #(or (map? %) (= :db/id %)) pull-pattern)
+  (let [starred? (some #{'*} pull-pattern)
+        implicit-ref-keys (when starred?
+                            (->> (keys affected-pull)
+                                 (filter #(or (reverse-lookup? %) (ref? schema %)))
+                                 (map (fn [k] {k [:db/id]}))))
+        implicit-component-keys (when starred?
+                                  (->> (keys affected-pull)
+                                       (filter #(is-component? schema %))
+                                       (map (fn [k] {k ['*]}))))
+        entity-keys (remove #(or (map? %) (= :db/id %)) pull-pattern)
         val-keys    (remove #(or (reverse-lookup? %) (ref? schema %)) entity-keys)
         ref-keys    (->> entity-keys
                          (remove (set val-keys))
                          (map (fn [k] {k [:db/id]})))
-        starred?    (some #{'*} val-keys)
-        pull-maps   (reduce merge (concat ref-keys (filter map? pull-pattern)))]
+        component-keys (->> entity-keys
+                            (filter #(is-component? schema %))
+                            (map (fn [k] {k ['*]})))
+        pull-maps   (reduce merge (concat implicit-ref-keys
+                                          implicit-component-keys
+                                          ref-keys
+                                          component-keys
+                                          (filter map? pull-pattern)))]
     (when (:db/id affected-pull)
       (concat
        (when (not (or refs-only? (empty? val-keys)))
