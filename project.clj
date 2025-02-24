@@ -1,4 +1,4 @@
-(defproject denistakeda/posh "0.5.9"
+(defproject denistakeda/posh "0.5.9.1"
   :description "Luxuriously easy and powerful Reagent / Datascript front-end framework"
   :url "http://github.com/denistakeda/posh/"
   :license {:name "Eclipse Public License"
@@ -22,15 +22,15 @@
                                      [reagent "0.9.0-rc2"]
                                      [org.clojure/clojure "1.10.1"]
                                      [org.clojure/clojurescript "1.10.520"]
-                                     [org.clojure/test.check "0.9.0"]
-                                     ]}}
+                                     [org.clojure/test.check "0.9.0"]]}}
+
   :cljsbuild {:builds [ {:id "posh"
                          :source-paths ["src/"]
                          :figwheel false
                          :compiler {:main "posh.core"
                                     :asset-path "js"
                                     :output-to "resources/public/js/main.js"
-                                    :output-dir "resources/public/js"} } ]}
+                                    :output-dir "resources/public/js"}}]}
   :scm {:name "git"
         :url "https://github.com/denistakeda/posh"}
   :aliases {"kaocha" ["with-profile" "+kaocha" "run" "-m" "kaocha.runner"]})

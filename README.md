@@ -1,4 +1,4 @@
-[![Clojars Project](https://img.shields.io/clojars/v/denistakeda/posh.svg)](https://clojars.org/denistakeda/posh)
+[![Clojars Project](https://img.shields.io/clojars/v/taipei.404/posh.svg)](https://clojars.org/taipei.404/posh)
 
 # Posh
 

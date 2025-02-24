@@ -1,2 +1,15 @@
 {:paths ["src"]
- :deps {org.clojure/core.match {:mvn/version "0.3.0"}}}
+ :deps {org.clojure/core.match {:mvn/version "0.3.0"}}
+
+ :aliases {:jar  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
+                  :exec-fn      hf.depstar/jar
+                  :exec-args    {:sync-pom    true
+                                 :group-id    "taipei.404"
+                                 :artifact-id "posh"
+                                 :version     "0.5.9.1"
+                                 :jar         "posh.jar"}}
+
+           :deploy {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
+                    :exec-fn    deps-deploy.deps-deploy/deploy
+                    :exec-args  {:installer :remote
+                                 :artifact "posh.jar"}}}}
